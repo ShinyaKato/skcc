@@ -1,0 +1,52 @@
+51
+string-literal ""
+new-line
+string-literal "a"
+new-line
+string-literal "xxxx"
+new-line
+string-literal "\t\n"
+new-line
+string-literal "\"\""
+new-line
+string-literal "\\"
+new-line
+string-literal "\u1234"
+new-line
+string-literal "\U00001234"
+new-line
+string-literal "aaa\u1234aaa"
+new-line
+string-literal "\u1234\U00001234"
+new-line
+string-literal "yyy"
+new-line
+string-literal "\0\0\0\0"
+new-line
+string-literal "\5"
+new-line
+string-literal "\5\5"
+new-line
+string-literal "\5abc\5abc\5abc"
+new-line
+string-literal "\12"
+new-line
+string-literal "\12\12"
+new-line
+string-literal "\12abc\12abc\12abc"
+new-line
+string-literal "\xff"
+new-line
+string-literal "\xffabc"
+new-line
+string-literal "\x80\t"
+new-line
+string-literal u"ttt"
+new-line
+string-literal U"ttt"
+new-line
+string-literal L"ttt"
+new-line
+string-literal u8"12345"
+new-line
+none

@@ -1,0 +1,40 @@
+39
+character-constant 'a'
+new-line
+character-constant 'x'
+new-line
+character-constant '1'
+new-line
+character-constant '\a'
+new-line
+character-constant '\n'
+new-line
+character-constant '\t'
+new-line
+character-constant '\\'
+new-line
+character-constant '\''
+new-line
+character-constant '\u1234'
+new-line
+character-constant '\U00001234'
+new-line
+character-constant '\0'
+new-line
+character-constant '\000'
+new-line
+character-constant '\123'
+new-line
+character-constant '\x101'
+new-line
+character-constant '\xff'
+new-line
+character-constant '\x0123456789abcdef'
+new-line
+character-constant u'a'
+new-line
+character-constant U'a'
+new-line
+character-constant L'a'
+new-line
+none
