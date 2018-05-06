@@ -1,0 +1,110 @@
+109
+left-bracket [
+new-line
+right-bracket ]
+new-line
+left-paren (
+new-line
+right-paren )
+new-line
+left-brace {
+new-line
+right-brace }
+new-line
+dot .
+new-line
+elipsis ...
+new-line
+comma ,
+new-line
+plus +
+new-line
+increment ++
+new-line
+plus-assign +=
+new-line
+minus -
+new-line
+decrement --
+new-line
+minus-assign -=
+new-line
+arrow ->
+new-line
+mul *
+new-line
+mul-assign *=
+new-line
+div /
+new-line
+div-assign /=
+new-line
+mod %
+new-line
+mod-assign %=
+new-line
+digraph-right-brace %>
+new-line
+digraph-sharp %:
+new-line
+digraph-concat %:%:
+new-line
+and &
+new-line
+logical-and &&
+new-line
+and-assign &=
+new-line
+or |
+new-line
+logical-or ||
+new-line
+or-assign |=
+new-line
+xor ^
+new-line
+xor-assign ^=
+new-line
+assign =
+new-line
+equal ==
+new-line
+not !
+new-line
+not-equal !=
+new-line
+less-than <
+new-line
+left-shift <<
+new-line
+left-shift-assign <<=
+new-line
+less-than-equal <=
+new-line
+digraph-left-bracket <:
+new-line
+digraph-left-brace <%
+new-line
+greater-than >
+new-line
+right-shift >>
+new-line
+right-shift-assign >>=
+new-line
+greater-than-equal >=
+new-line
+tilde ~
+new-line
+question ?
+new-line
+colon :
+new-line
+digraph-right-bracket :<
+new-line
+semicolon ;
+new-line
+sharp #
+new-line
+concat ##
+new-line
+none

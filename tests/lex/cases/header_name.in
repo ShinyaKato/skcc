@@ -1,0 +1,83 @@
+69
+sharp #
+identifier include
+space
+header-name <1/a.h>
+new-line
+preprocessing-number 0x3
+less-than <
+preprocessing-number 1
+div /
+identifier a
+dot .
+identifier h
+greater-than >
+preprocessing-number 1e2
+new-line
+sharp #
+identifier include
+space
+header-name "1/a.h"
+new-line
+preprocessing-number 0x3
+string-literal "1/a.h"
+preprocessing-number 1e2
+new-line
+sharp #
+space
+identifier include
+space
+header-name <stdio.h>
+new-line
+sharp #
+identifier include
+space
+preprocessing-number 123
+space
+less-than <
+identifier stdio
+dot .
+identifier h
+greater-than >
+new-line
+sharp #
+space
+preprocessing-number 123
+space
+identifier include
+space
+less-than <
+identifier stdio
+dot .
+identifier h
+greater-than >
+new-line
+sharp #
+identifier include
+space
+header-name <stdio.h>
+new-line
+preprocessing-number 123
+space
+sharp #
+identifier include
+space
+less-than <
+identifier stdio
+dot .
+identifier h
+greater-than >
+new-line
+sharp #
+identifier include
+identifier macroname
+new-line sharp
+identifier define
+space
+less-than <
+identifier stdio
+dot .
+identifier h
+greater-than >
+new-line
+none

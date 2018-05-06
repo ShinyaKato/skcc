@@ -1,0 +1,44 @@
+43
+preprocessing-number 123
+new-line
+preprocessing-number 123u
+new-line
+preprocessing-number 123ul
+new-line
+preprocessing-number 123ull
+new-line
+preprocessing-number 123l
+new-line
+preprocessing-number 123lu
+new-line
+preprocessing-number 123ll
+new-line
+preprocessing-number 123llu
+new-line
+preprocessing-number 0123
+new-line
+preprocessing-number 0x123
+new-line
+preprocessing-number 0xabc
+new-line
+preprocessing-number 123.
+new-line
+preprocessing-number 123.456
+new-line
+preprocessing-number .456
+new-line
+preprocessing-number 0.456
+new-line
+preprocessing-number 123e-8
+new-line
+preprocessing-number 0x123p456
+new-line
+preprocessing-number 0x.456p7
+new-line
+preprocessing-number 123\u1234
+new-line
+preprocessing-number 456\U12345678
+new-line
+preprocessing-number 0abc
+new-line
+none

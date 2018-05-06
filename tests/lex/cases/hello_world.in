@@ -1,0 +1,38 @@
+37
+sharp #
+identifier include
+space
+header-name <stdio.h>
+new-line
+identifier int
+space
+identifier main
+left-paren (
+identifier int
+space
+identifier argc
+comma ,
+space
+identifier char
+space
+mul *
+mul *
+identifier argv
+right-paren )
+space
+left-brace {
+new-line
+identifier printf
+left-paren (
+string-literal "hello\x20world\n"
+right-paren )
+semicolon ;
+new-line
+identifier return
+space
+preprocessing-number 0
+semicolon ;
+new-line
+right-brace }
+new-line
+none
