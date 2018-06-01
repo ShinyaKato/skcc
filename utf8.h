@@ -6,7 +6,7 @@ struct utf8c {
   unsigned char sequence[5];
 };
 
-extern struct utf8c eof;
+extern struct utf8c ueof;
 
 extern int count_bytes(unsigned char c);
 extern int check_sequence(struct utf8c uc);

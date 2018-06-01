@@ -3,11 +3,11 @@ all:
 
 
 CC = gcc
-CFLAGS = -std=c11
+CFLAGS = -std=c11 -g -O0 -ggdb
 TMPDIR = tmp
 
-skcc: tmp tmp/error.o tmp/utf8.o tmp/file.o tmp/string.o tmp/lex.o tmp/main.o
-	${CC} ${CFLAGS} -o skcc tmp/error.o tmp/utf8.o tmp/file.o tmp/string.o tmp/lex.o tmp/main.o
+skcc: tmp tmp/error.o tmp/utf8.o tmp/file.o tmp/string.o tmp/lex.o tmp/preprocess.o tmp/main.o
+	${CC} ${CFLAGS} -o skcc tmp/error.o tmp/utf8.o tmp/file.o tmp/string.o tmp/lex.o tmp/preprocess.o tmp/main.o
 
 tmp:
 	mkdir tmp
@@ -26,6 +26,9 @@ tmp/string.o: tmp string.c
 
 tmp/lex.o: tmp lex.c
 	${CC} ${CFLAGS} -c -o tmp/lex.o lex.c
+
+tmp/preprocess.o: tmp preprocess.c
+	${CC} ${CFLAGS} -c -o tmp/preprocess.o preprocess.c
 
 tmp/main.o: tmp main.c
 	${CC} ${CFLAGS} -c -o tmp/main.o main.c

@@ -30,7 +30,7 @@ enum pp_token_lexer_state {
   ST_S_OCT_1, ST_S_OCT_2, ST_S_HEX, ST_S_HEX_R, ST_STR_LTRL,
 
   ST_LBRACKET, ST_RBRACKET, ST_LPAREN, ST_RPAREN, ST_LBRACE, ST_RBRACE,
-  ST_DOT, ST_DOT_2, ST_ELIPSIS, ST_COMMA, ST_PLUS, ST_INC, ST_PLUS_ASGN,
+  ST_DOT, ST_DOT_2, ST_ELLIPSIS, ST_COMMA, ST_PLUS, ST_INC, ST_PLUS_ASGN,
   ST_MINUS, ST_DEC, ST_MINUS_ASGN, ST_ARROW, ST_MUL, ST_MUL_ASGN, ST_DIV, ST_DIV_ASGN,
   ST_MOD, ST_MOD_ASGN, ST_DIG_RBRACE, ST_DIG_SHARP, ST_DIG_SHARP_MOD, ST_DIG_CONCAT,
   ST_AND, ST_LAND, ST_AND_ASGN, ST_OR, ST_LOR, ST_OR_ASGN, ST_XOR, ST_XOR_ASGN,
@@ -45,7 +45,7 @@ enum pp_token_type {
   PP_H_NAME, PP_IDENT, PP_NUM, PP_CHAR, PP_STR,
 
   PP_LBRACKET, PP_RBRACKET, PP_LPAREN, PP_RPAREN, PP_LBRACE, PP_RBRACE,
-  PP_DOT, PP_ELIPSIS, PP_COMMA, PP_PLUS, PP_INC, PP_PLUS_ASGN,
+  PP_DOT, PP_ELLIPSIS, PP_COMMA, PP_PLUS, PP_INC, PP_PLUS_ASGN,
   PP_MINUS, PP_DEC, PP_MINUS_ASGN, PP_ARROW, PP_MUL, PP_MUL_ASGN, PP_DIV, PP_DIV_ASGN,
   PP_MOD, PP_MOD_ASGN, PP_DIG_RBRACE, PP_DIG_SHARP, PP_DIG_CONCAT,
   PP_AND, PP_LAND, PP_AND_ASGN, PP_OR, PP_LOR, PP_OR_ASGN, PP_XOR, PP_XOR_ASGN,
@@ -53,7 +53,9 @@ enum pp_token_type {
   PP_DIG_LBRACKET, PP_DIG_LBRACE, PP_GT, PP_RSHIFT, PP_RSHIFT_ASGN, PP_GTE,
   PP_TILDE, PP_QUESTION, PP_COLON, PP_DIG_RBRACKET, PP_SEMICOLON, PP_SHARP, PP_CONCAT,
 
-  PP_NEW_LINE, PP_SPACE, PP_OTHER, PP_NONE
+  PP_NEW_LINE, PP_SPACE,
+
+  PP_OTHER, PP_NONE, PP_PLACE_MARKER
 };
 
 enum pp_token_lexer_context { CTX_NL, CTX_SHARP, CTX_INCLUDE, CTX_NORMAL };
@@ -73,13 +75,14 @@ struct pp_token {
   enum pp_token_type type;
   const unsigned char *name;
   struct string *text;
+  int concat;
 };
 
 extern const unsigned char pp_token_name[][32];
 
 extern struct pp_token_lexer *allocate_pp_token_lexer(const unsigned char *file);
 extern void free_pp_token_lexer(struct pp_token_lexer *lexer);
-extern struct pp_token *allocate_token();
+extern struct pp_token *allocate_pp_token();
 extern void free_pp_token(struct pp_token *token);
 extern struct pp_token *next_pp_token(struct pp_token_lexer *lexer);
 

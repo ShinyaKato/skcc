@@ -35,7 +35,7 @@ struct utf8c fget_utf8c(struct source *src) {
   }
 
   if(uc.bytes == 0) {
-    return eof;
+    return ueof;
   }
 
   for(int i = 1; i < uc.bytes; i++) {
@@ -63,7 +63,7 @@ struct utf8c replace_trigraph(struct source *src) {
   }
 
   if(src->trigraph_queue_size == 0) {
-    return eof;
+    return ueof;
   }
 
   if(src->trigraph_queue_size == 3) {
@@ -97,7 +97,7 @@ struct utf8c splice_line(struct source *src) {
   }
 
   if(src->splice_queue_size == 0) {
-    return eof;
+    return ueof;
   }
 
   if(src->splice_queue_size >= 2) {
