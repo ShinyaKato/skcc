@@ -9,6 +9,7 @@ struct string {
 
 extern struct string *allocate_string();
 extern void append_string(struct string *str, unsigned char c);
+extern void write_string(struct string *dist, char *src);
 extern void concat_string(struct string *dist, struct string *src);
 extern void free_string(struct string *str);
 

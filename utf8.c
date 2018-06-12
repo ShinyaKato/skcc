@@ -1,6 +1,6 @@
 #include "utf8.h"
 
-struct utf8c eof = { 0, { 0xFF } };
+struct utf8c ueof = { 0, { 0xFF } };
 
 int count_bytes(unsigned char c) {
   int bytes;
@@ -93,7 +93,7 @@ struct utf8c code_point(int code) {
     uc.sequence[2] = ((code >> 6) & 0x3F) | 0x80;
     uc.sequence[3] = (code & 0x3F) | 0x80;
   } else {
-    uc = eof;
+    uc = ueof;
   }
   return uc;
 }

@@ -28,7 +28,8 @@ const unsigned char pp_token_name[][32] = {
   "not", "not-equal", "less-than", "left-shift", "left-shift-assign", "less-than-equal",
   "digraph-left-bracket", "digraph-left-brace", "greater-than", "right-shift",
   "right-shift-assign", "greater-than-equal", "tilde", "question", "colon",
-  "digraph-right-bracket", "semicolon", "sharp", "concat", "new-line", "space", "other", "none"
+  "digraph-right-bracket", "semicolon", "sharp", "concat", "new-line", "space",
+  "other", "none", "place marker"
 };
 
 struct pp_token_lexer *allocate_pp_token_lexer(const unsigned char *file) {
@@ -42,7 +43,7 @@ struct pp_token_lexer *allocate_pp_token_lexer(const unsigned char *file) {
 
   lexer->src = allocate_source(file);
   lexer->comment_queue_size = 0;
-  lexer->queue = (struct utf8c *) malloc(sizeof(struct source) * INIT_SIZE);
+  lexer->queue = (struct utf8c *) malloc(sizeof(struct utf8c) * INIT_SIZE);
   lexer->queue_head = 0;
   lexer->queue_size = 0;
   lexer->queue_allocate_size = INIT_SIZE;
@@ -90,7 +91,7 @@ struct utf8c remove_comment(struct pp_token_lexer *lexer) {
   }
 
   if(lexer->comment_queue_size == 0) {
-    return eof;
+    return ueof;
   }
 
   if(lexer->comment_queue_size == 2) {
@@ -105,7 +106,7 @@ struct utf8c remove_comment(struct pp_token_lexer *lexer) {
             break;
           }
         }
-        struct utf8c uc = single_byte_char(' ');
+        struct utf8c uc = single_byte_char('\n');
         lexer->comment_queue_size = 0;
         return uc;
       } else if(lexer->comment_queue[1].sequence[0] == '*') {
@@ -917,13 +918,13 @@ struct pp_token *next_pp_token(struct pp_token_lexer *lexer) {
     }
     else if(state == ST_DOT_2) {
       if(c == '.') {
-        state = ST_ELIPSIS;
+        state = ST_ELLIPSIS;
       } else {
         break;
       }
     }
-    else if(state == ST_ELIPSIS) {
-      type = PP_ELIPSIS;
+    else if(state == ST_ELLIPSIS) {
+      type = PP_ELLIPSIS;
       count = i;
       break;
     }
@@ -1289,6 +1290,12 @@ struct pp_token *next_pp_token(struct pp_token_lexer *lexer) {
         append_string(token->text, uc.sequence[i]);
       }
     }
+  } else if(type == PP_NEW_LINE) {
+    token->type = PP_NEW_LINE;
+    append_string(token->text, '\n');
+    for(int i = 0; i < count; i++) {
+      pop_char_queue(lexer);
+    }
   } else if(type == PP_SPACE) {
     token->type = PP_SPACE;
     append_string(token->text, ' ');
@@ -1301,6 +1308,9 @@ struct pp_token *next_pp_token(struct pp_token_lexer *lexer) {
       struct utf8c uc = pop_char_queue(lexer);
       if(uc.sequence[0] == '\\') {
         struct utf8c univ = pop_char_queue(lexer);
+        for(int j = 0; j < uc.bytes; j++) {
+          append_string(token->text, uc.sequence[j]);
+        }
         int n;
         if(univ.sequence[0] == 'u') {
           n = 4;
@@ -1308,6 +1318,12 @@ struct pp_token *next_pp_token(struct pp_token_lexer *lexer) {
           n = 8;
         }
         i += n + 1;
+        append_string(token->text, 'U');
+        if(univ.sequence[0] == 'u') {
+          for(int j = 0; j < 4; j++) {
+            append_string(token->text, '0');
+          }
+        }
         int code = 0;
         for(int j = 0; j < n; j++) {
           unsigned char hex = pop_char_queue(lexer).sequence[0];
@@ -1318,6 +1334,7 @@ struct pp_token *next_pp_token(struct pp_token_lexer *lexer) {
           } else if('A' <= hex && hex <= 'F') {
             code = code * 16 + (hex - 'A' + 10);
           }
+          append_string(token->text, hex);
         }
         struct utf8c dc = code_point(code);
         if(i == 0 && ident_disallowed_init_code(code)) {
@@ -1325,9 +1342,6 @@ struct pp_token *next_pp_token(struct pp_token_lexer *lexer) {
         }
         if(!ident_allowed_code(code)) {
           error("'%s' is not allowed for identifier\n", dc.sequence);
-        }
-        for(int j = 0; j < dc.bytes; j++) {
-          append_string(token->text, dc.sequence[j]);
         }
       } else {
         for(int j = 0; j < uc.bytes; j++) {
@@ -1345,6 +1359,7 @@ struct pp_token *next_pp_token(struct pp_token_lexer *lexer) {
     }
   }
   token->name = pp_token_name[token->type];
+  token->concat = 0;
 
   if(lexer->context == CTX_NL) {
     if(token->type == PP_SHARP) {
