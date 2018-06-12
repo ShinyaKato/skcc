@@ -1,1 +1,1 @@
-#define MSG "hello world"
+#define MESSAGE "hello world\n"

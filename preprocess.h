@@ -10,7 +10,8 @@
 #define MACRO_TABLE_SIZE 40961
 #define MACRO_TABLE_SLIDE_MOD 1001
 
-#define MACRO_PARAMS_LIMIT 127
+#define MACRO_PARAMS_SIZE 128
+#define MACRO_PARAMS_LIMIT (MACRO_PARAMS_SIZE - 1)
 
 struct pp_list {
   struct pp_node *head;
@@ -30,7 +31,7 @@ struct macro_entry {
   const unsigned char *identifier;
   int parameter_size;
   int parameter_ellipsis;
-  struct string *parameters[MACRO_PARAMS_LIMIT];
+  struct string *parameters[MACRO_PARAMS_SIZE];
   struct pp_list *replacement_list;
   int expanded;
 };
@@ -40,11 +41,12 @@ struct preprocessor {
   struct pp_token *token_queue[1];
   int token_queue_size;
   struct pp_list *list;
-  struct macro_entry *macro_table[MACRO_TABLE_SIZE];
 };
 
-extern struct preprocessor *allocate_preprocessor(const unsigned char *file);
-extern void free_preprocessor(struct preprocessor *pp);
-extern struct pp_list *preprocessing_file(struct preprocessor *pp);
+extern void group(struct preprocessor *pp);
+extern void skip_line(struct preprocessor *pp);
+extern void skip_group(struct preprocessor *pp);
+extern struct pp_list *parse_preprocessing_file(unsigned char *file);
+extern struct pp_list *preprocess(unsigned char *file);
 
 #endif

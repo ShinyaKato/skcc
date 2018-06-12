@@ -23,22 +23,22 @@ identifier y
 new-line
 identifier p123
 new-line
-identifier あ
+identifier \U00003042
 new-line
-identifier あ
+identifier \U00003042
 new-line
-identifier Lあ
+identifier L\U00003042
 new-line
-identifier Uあ
+identifier U\U00003042
 new-line
-identifier uあ
+identifier u\U00003042
 new-line
-identifier u8あ
+identifier u8\U00003042
 new-line
-identifier xあyz
+identifier x\U00003042yz
 new-line
-identifier ああ
+identifier \U00003042\U00003042
 new-line
-identifier ああabc
+identifier \U00003042\U00003042abc
 new-line
 none

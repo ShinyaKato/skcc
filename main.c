@@ -6,9 +6,7 @@ int main(int argc, char **argv) {
   }
 
   char *file = argv[1];
-  struct preprocessor *pp = allocate_preprocessor(file);
-
-  struct pp_list *list = preprocessing_file(pp);
+  struct pp_list *list = preprocess(file);
 
   /* for(struct pp_node *node = list->head; node != NULL; node = node->next) { */
   /*   struct pp_token *token = node->token; */
@@ -23,8 +21,6 @@ int main(int argc, char **argv) {
     struct pp_token *token = node->token;
     printf("%s", token->text->head);
   }
-
-  free_preprocessor(pp);
 
   return 0;
 }

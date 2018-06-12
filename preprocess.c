@@ -1,7 +1,14 @@
 #include "preprocess.h"
 
+struct macro_entry *macro_table[MACRO_TABLE_SIZE];
+
 struct pp_list *object_macro_invocation(struct preprocessor *pp, struct macro_entry *macro);
 struct pp_list *function_macro_invocation(struct preprocessor *pp, struct macro_entry *macro, struct pp_list **args, int args_size);
+int conditional_expression(struct pp_node **node);
+void group(struct preprocessor *pp);
+void skip_line(struct preprocessor *pp);
+void skip_group(struct preprocessor *pp);
+struct pp_list *parse_preprocessing_file(unsigned char *file);
 
 // pp_list
 struct pp_list *allocate_pp_list() {
@@ -54,6 +61,7 @@ struct macro_entry *allocate_macro_entry() {
 }
 
 void free_macro_entry(struct macro_entry *macro) {
+  free_pp_list(macro->replacement_list);
   free(macro);
 }
 
@@ -64,15 +72,6 @@ int ident_hash(const unsigned char *ident) {
     h = (h * BASE + ident[i]) % MACRO_TABLE_SIZE;
   }
   return h;
-}
-
-int ident_hash_slide(const unsigned char *ident) {
-  const int BASE = 263;
-  int h = 0;
-  for(int i = 0; ident[i] != '\0'; i++) {
-    h = (h * BASE + ident[i]) % MACRO_TABLE_SLIDE_MOD;
-  }
-  return MACRO_TABLE_SLIDE_MOD - h + 1;
 }
 
 int compare_macro(const struct macro_entry *macro1, const struct macro_entry *macro2) {
@@ -104,97 +103,51 @@ int compare_macro(const struct macro_entry *macro1, const struct macro_entry *ma
   return 1;
 }
 
-void insert_macro_table(struct preprocessor *pp, struct macro_entry *macro) {
+void insert_macro_table(struct macro_entry *macro) {
   int h1 = ident_hash(macro->identifier);
-  int h2 = ident_hash_slide(macro->identifier);
-  for(int i = 0, h = h1; i < MACRO_TABLE_SIZE; i++, h = (h + h2) % MACRO_TABLE_SIZE) {
-    if(pp->macro_table[h] == NULL) {
-      pp->macro_table[h] = macro;
+  for(int i = 0, h = h1; i < MACRO_TABLE_SIZE; i++, h = (h + 1) % MACRO_TABLE_SIZE) {
+    if(macro_table[h] == NULL) {
+      macro_table[h] = macro;
       break;
     } else {
-      if(strcmp(pp->macro_table[h]->identifier, macro->identifier) == 0) {
-        if(compare_macro(pp->macro_table[h], macro)) {
+      if(strcmp(macro_table[h]->identifier, macro->identifier) == 0) {
+        if(compare_macro(macro_table[h], macro)) {
           break;
         } else {
-          error("duplicated macro definition.\n");
+          error("duplicated macro definition: %s\n", macro->identifier);
         }
       }
     }
   }
 }
 
-void delete_macro_table(struct preprocessor *pp, const unsigned char *identifier) {
+void delete_macro_table(const unsigned char *identifier) {
   int h1 = ident_hash(identifier);
-  int h2 = ident_hash_slide(identifier);
-  for(int i = 0, h = h1; i < MACRO_TABLE_SIZE; i++, h = (h + h2) % MACRO_TABLE_SIZE) {
-    if(pp->macro_table[h] == NULL) break;
-    if(strcmp(pp->macro_table[h]->identifier, identifier) == 0) {
-      pp->macro_table[h] = NULL;
-      for(h += h2; i < MACRO_TABLE_SIZE; i++, h += h2) {
-        if(pp->macro_table[h] == NULL) break;
-        struct macro_entry *t = pp->macro_table[h];
-        pp->macro_table[h] = NULL;
-        insert_macro_table(pp, t);
+  for(int i = 0, h = h1; i < MACRO_TABLE_SIZE; i++, h = (h + 1) % MACRO_TABLE_SIZE) {
+    if(macro_table[h] == NULL) break;
+    if(strcmp(macro_table[h]->identifier, identifier) == 0) {
+      macro_table[h] = NULL;
+      h = (h + 1) % MACRO_TABLE_SIZE;
+      for(int j = i; j < MACRO_TABLE_SIZE; j++, h = (h + 1) % MACRO_TABLE_SIZE) {
+        if(macro_table[h] == NULL) break;
+        struct macro_entry *t = macro_table[h];
+        macro_table[h] = NULL;
+        insert_macro_table(t);
       }
       break;
     }
   }
 }
 
-struct macro_entry *search_macro_table(struct preprocessor *pp, const unsigned char *identifier) {
+struct macro_entry *search_macro_table(const unsigned char *identifier) {
   int h1 = ident_hash(identifier);
-  int h2 = ident_hash_slide(identifier);
-  for(int i = 0, h = h1; i < MACRO_TABLE_SIZE; i++, h = (h + h2) % MACRO_TABLE_SIZE) {
-    if(pp->macro_table[h] == NULL) break;
-    if(strcmp(pp->macro_table[h]->identifier, identifier) == 0) {
-      return pp->macro_table[h];
+  for(int i = 0, h = h1; i < MACRO_TABLE_SIZE; i++, h = (h + 1) % MACRO_TABLE_SIZE) {
+    if(macro_table[h] == NULL) break;
+    if(strcmp(macro_table[h]->identifier, identifier) == 0) {
+      return macro_table[h];
     }
   }
   return NULL;
-}
-
-// preprocessor
-struct preprocessor *allocate_preprocessor(const unsigned char *file) {
-  struct preprocessor *pp = (struct preprocessor *) malloc(sizeof(struct preprocessor));
-  if(pp == NULL) {
-    perror("malloc");
-    exit(1);
-  }
-  pp->lexer = allocate_pp_token_lexer(file);
-  pp->token_queue_size = 0;
-  pp->list = allocate_pp_list();
-  for(int i = 0; i < MACRO_TABLE_SIZE; i++) {
-    pp->macro_table[i] = NULL;
-  }
-  return pp;
-}
-
-void free_preprocessor(struct preprocessor *pp) {
-  free_pp_token_lexer(pp->lexer);
-  free_pp_list(pp->list);
-  free(pp);
-}
-
-struct pp_token *peek_pp_token(struct preprocessor *pp) {
-  if(pp->token_queue_size == 0) {
-    pp->token_queue[pp->token_queue_size++] = next_pp_token(pp->lexer);
-  }
-  return pp->token_queue[0];
-}
-
-struct pp_token *pop_pp_token(struct preprocessor *pp) {
-  if(pp->token_queue_size == 0) {
-    pp->token_queue[pp->token_queue_size++] = next_pp_token(pp->lexer);
-  }
-  return pp->token_queue[--pp->token_queue_size];
-}
-
-struct pp_token *pop_pp_token_with_space(struct preprocessor *pp) {
-  struct pp_token *token = pop_pp_token(pp);
-  if(peek_pp_token(pp)->type == PP_SPACE) {
-    pop_pp_token(pp);
-  }
-  return token;
 }
 
 // macro replacement
@@ -202,7 +155,7 @@ int check_object_macro_invocation(struct preprocessor *pp, struct pp_node *node)
   if(node->token->type != PP_IDENT) return 0;
   if(node->skip) return 0;
 
-  struct macro_entry *macro = search_macro_table(pp, node->token->text->head);
+  struct macro_entry *macro = search_macro_table(node->token->text->head);
   return macro != NULL && !macro->expanded && macro->type == MACRO_OBJECT;
 }
 
@@ -210,7 +163,7 @@ int check_function_macro_invocation(struct preprocessor *pp, struct pp_node *nod
   if(node->token->type != PP_IDENT) return 0;
   if(node->skip) return 0;
 
-  struct macro_entry *macro = search_macro_table(pp, node->token->text->head);
+  struct macro_entry *macro = search_macro_table(node->token->text->head);
   if(macro == NULL || macro->expanded || macro->type != MACRO_FUNCTION) {
     return 0;
   }
@@ -232,18 +185,18 @@ struct pp_list *scan_macro(struct preprocessor *pp, struct pp_list *list) {
   struct pp_list *result = allocate_pp_list();
 
   for(struct pp_node *node = list->head; node != NULL; node = node->next) {
-    struct macro_entry *macro = search_macro_table(pp, node->token->text->head);
+    struct macro_entry *macro = search_macro_table(node->token->text->head);
 
     // object-like macro invocation
     if(check_object_macro_invocation(pp, node)) {
-      struct macro_entry *macro = search_macro_table(pp, node->token->text->head);
+      struct macro_entry *macro = search_macro_table(node->token->text->head);
       struct pp_list *list = object_macro_invocation(pp, macro);
       concat_pp_list(result, list);
     }
 
     // function-like macro invocation
     else if(check_function_macro_invocation(pp, node)) {
-      struct macro_entry *macro = search_macro_table(pp, node->token->text->head);
+      struct macro_entry *macro = search_macro_table(node->token->text->head);
       struct pp_list *args[MACRO_PARAMS_LIMIT];
       int args_count = 0;
       int level = 0;
@@ -383,7 +336,7 @@ struct pp_list *concat_macro_token(struct pp_list *list) {
       struct pp_token *new_token = next_pp_token(&lexer);
       new_token->concat = 1;
       if(lexer.queue_size > 1) {
-        error("invalid token concatnation.\n");
+        error("invalid token concatnation: %s ## %s\n", l->text->head, r->text->head);
       }
       append_pp_list(result, new_token);
 
@@ -483,13 +436,18 @@ struct pp_list *function_macro_invocation(struct preprocessor *pp, struct macro_
       right = right->next;
     }
     if(middle != NULL && middle->token->type == PP_CONCAT && !middle->token->concat) {
+      int left_replaced = 0;
       for(int i = 0; i < args_size; i++) {
         if(left->token->type == PP_IDENT && strcmp(left->token->text->head, macro->parameters[i]->head) == 0) {
           for(struct pp_node *arg_node = args[i]->head; arg_node != NULL; arg_node = arg_node->next) {
             append_pp_list(list, arg_node->token);
           }
+          left_replaced = 1;
           break;
         }
+      }
+      if(!left_replaced) {
+        append_pp_list(list, left->token);
       }
       if(left->next != middle) {
         append_pp_list(list, left->next->token);
@@ -498,13 +456,18 @@ struct pp_list *function_macro_invocation(struct preprocessor *pp, struct macro_
       if(middle->next != right) {
         append_pp_list(list, middle->next->token);
       }
+      int right_replaced = 0;
       for(int i = 0; i < args_size; i++) {
         if(right->token->type == PP_IDENT && strcmp(right->token->text->head, macro->parameters[i]->head) == 0) {
           for(struct pp_node *arg_node = args[i]->head; arg_node != NULL; arg_node = arg_node->next) {
             append_pp_list(list, arg_node->token);
           }
+          right_replaced = 1;
           break;
         }
+      }
+      if(!right_replaced) {
+        append_pp_list(list, right->token);
       }
       node = right;
       continue;
@@ -533,36 +496,68 @@ struct pp_list *function_macro_invocation(struct preprocessor *pp, struct macro_
   return result;
 }
 
-// directives
-void skip_line(struct preprocessor *pp) {
-  while(1) {
-    struct pp_token *token = pop_pp_token(pp);
-    if(token->type == PP_NEW_LINE) break;
+// preprocessor
+struct pp_token *peek_pp_token(struct preprocessor *pp) {
+  if(pp->token_queue_size == 0) {
+    pp->token_queue[pp->token_queue_size++] = next_pp_token(pp->lexer);
   }
+  return pp->token_queue[0];
 }
 
-void skip_group(struct preprocessor *pp) {
-  while(peek_pp_token(pp)->type != PP_NONE) {
-    if(peek_pp_token(pp)->type == PP_SHARP) {
-      pop_pp_token_with_space(pp);
-
-      struct pp_token *directive = peek_pp_token(pp);
-      if(directive->type == PP_IDENT && strcmp(directive->text->head, "elif") == 0) {
-        break;
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "else") == 0) {
-        break;
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "endif") == 0) {
-        break;
-      }
-
-      skip_line(pp);
-    } else {
-      skip_line(pp);
-    }
+struct pp_token *read_pp_token(struct preprocessor *pp) {
+  if(pp->token_queue_size == 0) {
+    pp->token_queue[pp->token_queue_size++] = next_pp_token(pp->lexer);
   }
+  return pp->token_queue[--pp->token_queue_size];
 }
 
-int conditional_expression(struct pp_node **node);
+int check_pp_token(struct preprocessor *pp, enum pp_token_type type) {
+  return peek_pp_token(pp)->type == type;
+}
+
+int check_keyword(struct preprocessor *pp, char *text) {
+  struct pp_token *token = peek_pp_token(pp);
+  return token->type == PP_IDENT && strcmp(token->text->head, text) == 0;
+}
+
+void skip_pp_token(struct preprocessor *pp) {
+  struct pp_token *token = read_pp_token(pp);
+  free_pp_token(token);
+}
+
+void remove_white_space(struct preprocessor *pp) {
+  if(check_pp_token(pp, PP_SPACE)) skip_pp_token(pp);
+}
+
+struct pp_token *expect_pp_token(struct preprocessor *pp, enum pp_token_type type) {
+  struct pp_token *token = read_pp_token(pp);
+  if(token->type != type) error("%s is expected.\n", pp_token_name[type]);
+  return token;
+}
+
+void discard_new_line(struct preprocessor *pp) {
+  struct pp_token *token = expect_pp_token(pp, PP_NEW_LINE);
+  free_pp_token(token);
+}
+
+struct pp_token *read_pp_token_with_space(struct preprocessor *pp) {
+  struct pp_token *token = read_pp_token(pp);
+  remove_white_space(pp);
+  return token;
+}
+
+void skip_pp_token_with_space(struct preprocessor *pp) {
+  struct pp_token *token = read_pp_token(pp);
+  free_pp_token(token);
+  remove_white_space(pp);
+}
+
+#define unexpected_pp_token(pp) { \
+  struct pp_token *token = read_pp_token(pp); \
+  error("unexpected preprocessing token: %s.", pp_token_name[token->type]); \
+}
+
+// if_directive
 int primary_expression(struct pp_node **node) {
   if((*node)->token->type == PP_NUM) {
     int value = 0;
@@ -577,6 +572,7 @@ int primary_expression(struct pp_node **node) {
         base = 16;
         break;
       }
+      if(c == 'l' || c == 'L') break;
       if(base == 10) {
         if('0' <= c && c <= '9') {
           value = value * 10 + (c - '0');
@@ -776,116 +772,76 @@ int conditional_expression(struct pp_node **node) {
   return result;
 }
 
-int if_condition(struct preprocessor *pp) {
-  struct pp_list *list = allocate_pp_list();
-  while(1) {
-    struct pp_token *token = pop_pp_token(pp);
-    if(token->type == PP_NEW_LINE) break;
-    append_pp_list(list, token);
+struct pp_node *check_defined_operator(struct pp_node **node) {
+  struct pp_node *ident;
+
+  *node = (*node)->next;
+  if((*node)->token->type == PP_SPACE) {
+    *node = (*node)->next;
   }
 
-  printf("  condition:\n    ");
-  for(struct pp_node *node = list->head; node != NULL; node = node->next) {
-    printf("%s", node->token->text->head);
+  if((*node)->token->type == PP_IDENT) {
+    ident = *node;
+  } else if((*node)->token->type == PP_LPAREN) {
+    *node = (*node)->next;
+    if((*node)->token->type == PP_SPACE) {
+      *node = (*node)->next;
+    }
+
+    if((*node)->token->type == PP_IDENT) {
+      ident = *node;
+      *node = (*node)->next;
+
+      if((*node)->token->type != PP_RPAREN) {
+        error("%s is expected.\n", pp_token_name[PP_RPAREN]);
+      }
+    } else {
+      error("%s is expected.\n", pp_token_name[PP_IDENT]);
+    }
+  } else {
+    error("%s or %s is expected.\n", pp_token_name[PP_IDENT], pp_token_name[PP_RPAREN]);
   }
-  printf("\n");
+
+  return ident;
+}
+
+int if_control(struct preprocessor *pp) {
+  struct pp_list *list = allocate_pp_list();
+  while(!check_pp_token(pp, PP_NEW_LINE)) {
+    struct pp_token *token = read_pp_token(pp);
+    append_pp_list(list, token);
+  }
+  discard_new_line(pp);
 
   for(struct pp_node *node = list->head; node != NULL; node = node->next) {
     if(node->token->type == PP_IDENT && strcmp(node->token->text->head, "defined") == 0) {
-      if(node->next->token->type == PP_SPACE) node = node->next;
-      struct pp_node *next = node->next;
-      if(next->token->type == PP_IDENT) {
-        next->skip = 1;
-        node = next;
-      } else if(next->token->type == PP_LPAREN) {
-        if(next->next->token->type == PP_IDENT) {
-          if(next->next->next->token->type != PP_RPAREN) {
-            error("')' is expected.\n");
-          }
-          next->next->skip = 1;
-          node = next->next->next;
-        } else {
-          error("identifier is expected.\n");
-        }
-      } else {
-        error("identifier or '(' is expected.\n");
-      }
+      struct pp_node *ident = check_defined_operator(&node);
+      ident->skip = 1;
     }
   }
 
   list = scan_macro(pp, list);
 
-  printf("    ");
-  for(struct pp_node *node = list->head; node != NULL; node = node->next) {
-    printf("%s", node->token->text->head);
-  }
-  printf("\n");
+  struct pp_token *zero = allocate_pp_token();
+  zero->type = PP_NUM;
+  zero->name = pp_token_name[PP_NUM];
+  append_string(zero->text, '0');
+
+  struct pp_token *one = allocate_pp_token();
+  one->type = PP_NUM;
+  one->name = pp_token_name[PP_NUM];
+  append_string(one->text, '1');
 
   struct pp_list *replaced = allocate_pp_list();
   for(struct pp_node *node = list->head; node != NULL; node = node->next) {
     if(node->token->type == PP_IDENT && strcmp(node->token->text->head, "defined") == 0) {
-      if(node->next->token->type == PP_SPACE) node = node->next;
-      struct pp_node *next = node->next;
-      if(next->token->type == PP_IDENT) {
-        struct macro_entry *macro = search_macro_table(pp, next->token->text->head);
-        if(macro) {
-          struct pp_token *token = allocate_pp_token();
-          token->type = PP_NUM;
-          token->name = pp_token_name[token->type];
-          append_string(token->text, '1');
-          append_pp_list(replaced, token);
-        } else {
-          struct pp_token *token = allocate_pp_token();
-          token->type = PP_NUM;
-          token->name = pp_token_name[token->type];
-          append_string(token->text, '0');
-          append_pp_list(replaced, token);
-        }
-        node = next;
-      } else if(next->token->type == PP_LPAREN) {
-        if(next->next->token->type == PP_IDENT) {
-          struct macro_entry *macro = search_macro_table(pp, next->next->token->text->head);
-          if(macro) {
-            struct pp_token *token = allocate_pp_token();
-            token->type = PP_NUM;
-            token->name = pp_token_name[token->type];
-            append_string(token->text, '1');
-            append_pp_list(replaced, token);
-          } else {
-            struct pp_token *token = allocate_pp_token();
-            token->type = PP_NUM;
-            token->name = pp_token_name[token->type];
-            append_string(token->text, '0');
-            append_pp_list(replaced, token);
-          }
-          if(next->next->next->token->type != PP_RPAREN) {
-            error("')' is expected.\n");
-          }
-          node = next->next->next;
-        } else {
-          error("identifier is expected.\n");
-        }
-      } else {
-        error("identifier or '(' is expected.\n");
-      }
+      struct pp_node *ident = check_defined_operator(&node);
+      struct macro_entry *macro = search_macro_table(ident->token->text->head);
+      append_pp_list(replaced, macro == NULL ? zero : one);
     } else {
-      if(node->token->type == PP_IDENT) {
-        struct pp_token *token = allocate_pp_token();
-        token->type = PP_NUM;
-        token->name = pp_token_name[token->type];
-        append_string(token->text, '0');
-        append_pp_list(replaced, token);
-      } else {
-        append_pp_list(replaced, node->token);
-      }
+      append_pp_list(replaced, node->token->type != PP_IDENT ? node->token : zero);
     }
   }
-
-  printf("    ");
-  for(struct pp_node *node = replaced->head; node != NULL; node = node->next) {
-    printf("%s", node->token->text->head);
-  }
-  printf("\n");
 
   for(struct pp_node **node = &(replaced->head); *node != NULL;) {
     if((*node)->token->type == PP_SPACE || (*node)->token->type == PP_SPACE) {
@@ -895,346 +851,322 @@ int if_condition(struct preprocessor *pp) {
     }
   }
 
-  int condition = conditional_expression(&(replaced->head));
-  printf("  result: %d\n", condition);
-  return condition;
+  return conditional_expression(&(replaced->head));
 }
 
-int ifdef_condition(struct preprocessor *pp) {
-  struct pp_token *ident = pop_pp_token(pp);
-  if(ident->type != PP_IDENT) {
-    error("identifier is expected.\n");
+void conditional_include(struct preprocessor *pp, int condition) {
+  if(condition) group(pp);
+  else skip_group(pp);
+}
+
+int if_directive(struct preprocessor *pp) {
+  skip_pp_token_with_space(pp);
+
+  int control = if_control(pp);
+  conditional_include(pp, control);
+
+  return control;
+}
+
+int ifdef_directive(struct preprocessor *pp) {
+  skip_pp_token_with_space(pp);
+
+  struct pp_token *ident = expect_pp_token(pp, PP_IDENT);
+  discard_new_line(pp);
+
+  struct macro_entry *macro = search_macro_table(ident->text->head);
+  int control = macro != NULL;
+  conditional_include(pp, control);
+
+  return control;
+}
+
+int ifndef_directive(struct preprocessor *pp) {
+  skip_pp_token_with_space(pp);
+
+  struct pp_token *ident = expect_pp_token(pp, PP_IDENT);
+  discard_new_line(pp);
+
+  struct macro_entry *macro = search_macro_table(ident->text->head);
+  int control = macro == NULL;
+  conditional_include(pp, control);
+
+  return control;
+}
+
+int elif_directive(struct preprocessor *pp, int skip) {
+  skip_pp_token_with_space(pp);
+
+  int control = if_control(pp);
+  conditional_include(pp, !skip && control);
+
+  return skip || control;
+}
+
+void else_directive(struct preprocessor *pp, int skip) {
+  skip_pp_token_with_space(pp);
+  discard_new_line(pp);
+
+  conditional_include(pp, !skip);
+}
+
+void endif_directive(struct preprocessor *pp) {
+  skip_pp_token_with_space(pp);
+  discard_new_line(pp);
+}
+
+void if_section(struct preprocessor *pp) {
+  int skip;
+
+  if(check_keyword(pp, "if")) {
+    skip = if_directive(pp);
+  } else if(check_keyword(pp, "ifdef")) {
+    skip = ifdef_directive(pp);
+  } else if(check_keyword(pp, "ifndef")) {
+    skip = ifndef_directive(pp);
   }
-  if(pop_pp_token(pp)->type != PP_NEW_LINE) {
-    error("invalid ifdef directive\n");
+
+  while(check_keyword(pp, "elif")) {
+    skip = elif_directive(pp, skip);
   }
 
-  struct macro_entry *macro = search_macro_table(pp, ident->text->head);
-  return macro != NULL;
-}
+  if(check_keyword(pp, "else")) {
+    else_directive(pp, skip);
+  }
 
-int ifndef_condition(struct preprocessor *pp) {
-  return !ifdef_condition(pp);
-}
-
-void if_directive(struct preprocessor *pp) {
-  int condition = 0;
-
-  printf("#if\n");
-
-  if(if_condition(pp)) {
-    group(pp);
-    condition = 1;
+  if(check_keyword(pp, "endif")) {
+    endif_directive(pp);
   } else {
-    skip_group(pp);
+    error("#endif directive is missing.\n");
+  }
+}
+
+// include directive
+int try_fopen(char *file) {
+  FILE *fp = fopen(file, "r");
+
+  if(fp == NULL) return 0;
+
+  fclose(fp);
+  return 1;
+}
+
+struct string *search_header_file(struct string *text) {
+  char location[4][64] = {
+    "/usr/lib/gcc/x86_64-linux-gnu/7/include/",
+    "/usr/include/",
+    "/usr/include/linux/",
+    "/usr/include/x86_64-linux-gnu/"
+  };
+
+  for(int k = 0; k < 4; k++) {
+    struct string *path = allocate_string();
+    write_string(path, location[k]);
+    for(int i = 1; i < text->size - 1; i++) {
+      append_string(path, text->head[i]);
+    }
+
+    if(try_fopen(path->head)) return path;
+
+    free_string(path);
   }
 
-  while(1) {
-    struct pp_token *token = pop_pp_token(pp);
-    if(strcmp(token->text->head, "elif") == 0) {
-      printf("  #elif\n");
-      pop_pp_token_with_space(pp);
-      int control = if_condition(pp);
-      if(!condition && control) {
-        group(pp);
-        condition = 1;
-      } else {
-        skip_group(pp);
-      }
-    } else if(strcmp(token->text->head, "else") == 0) {
-      printf("  #else\n");
-      pop_pp_token_with_space(pp);
-      if(!condition) {
-        group(pp);
-      } else {
-        skip_group(pp);
-      }
-    } else if(strcmp(token->text->head, "endif") == 0) {
-      printf("  #endif\n");
-      pop_pp_token_with_space(pp);
-      break;
+  // failed to search header file
+  return NULL;
+}
+
+struct string *search_named_source_file(struct string *text, const char *current_file) {
+  int last_slash = 0;
+  for(int i = 0; current_file[i]; i++) {
+    if(current_file[i] == '/') {
+      last_slash = i;
     }
   }
-}
 
-void ifdef_directive(struct preprocessor *pp) {
-  int condition = 0;
-
-  printf("#ifdef\n");
-
-  if(ifdef_condition(pp)) {
-    group(pp);
-    condition = 1;
-  } else {
-    skip_group(pp);
-  }
-
-  while(1) {
-    struct pp_token *token = pop_pp_token(pp);
-    if(strcmp(token->text->head, "elif") == 0) {
-      printf("  #elif\n");
-      pop_pp_token_with_space(pp);
-      int control = if_condition(pp);
-      if(!condition && control) {
-        group(pp);
-        condition = 1;
-      } else {
-        skip_group(pp);
-      }
-    } else if(strcmp(token->text->head, "else") == 0) {
-      printf("  #else\n");
-      pop_pp_token_with_space(pp);
-      if(!condition) {
-        group(pp);
-      } else {
-        skip_group(pp);
-      }
-    } else if(strcmp(token->text->head, "endif") == 0) {
-      printf("  #endif\n");
-      pop_pp_token_with_space(pp);
-      break;
+  struct string *dir = allocate_string();
+  if(last_slash > 0) {
+    for(int i = 0; i < last_slash; i++) {
+      append_string(dir, current_file[i]);
     }
-  }
-}
-
-void ifndef_directive(struct preprocessor *pp) {
-  int condition = 0;
-
-  printf("#ifndef\n");
-
-  if(ifndef_condition(pp)) {
-    group(pp);
-    condition = 1;
-  } else {
-    skip_group(pp);
+    append_string(dir, '/');
   }
 
-  while(1) {
-    struct pp_token *token = pop_pp_token(pp);
-    if(strcmp(token->text->head, "elif") == 0) {
-      printf("  #elif\n");
-      pop_pp_token_with_space(pp);
-      int control = if_condition(pp);
-      if(!condition && control) {
-        group(pp);
-        condition = 1;
-      } else {
-        skip_group(pp);
-      }
-    } else if(strcmp(token->text->head, "else") == 0) {
-      printf("  #else\n");
-      pop_pp_token_with_space(pp);
-      if(!condition) {
-        group(pp);
-      } else {
-        skip_group(pp);
-      }
-    } else if(strcmp(token->text->head, "endif") == 0) {
-      printf("  #endif\n");
-      pop_pp_token_with_space(pp);
-      break;
-    }
+  struct string *path = allocate_string();
+  concat_string(path, dir);
+  for(int i = 1; i < text->size - 1; i++) {
+    append_string(path, text->head[i]);
   }
+
+  if(try_fopen(path->head)) {
+    return path;
+  }
+
+  free_string(path);
+
+  // reprocess as if header file was read
+  return search_header_file(text);
 }
 
 void include_directive(struct preprocessor *pp) {
-  struct pp_token *header = pop_pp_token(pp);
-  struct string *path = allocate_string();
-
-  if(header->type == PP_H_NAME && header->text->head[0] == '<') {
-    for(int i = 0; i < 13; i++) {
-      append_string(path, "/usr/include/"[i]);
-    }
-    for(int i = 1; i < header->text->size - 1; i++) {
-      append_string(path, header->text->head[i]);
-    }
-  } else if(header->type == PP_H_NAME && header->text->head[0] == '"') {
-    if(header->text->head[1] == '/') {
-      for(int i = 1; i < header->text->size - 1; i++) {
-        append_string(path, header->text->head[i]);
-      }
-    } else {
-      const unsigned char *file = pp->lexer->src->file;
-      int dir_last = 0;
-      for(int i = 0; file[i]; i++) {
-        if(file[i] == '/') {
-          dir_last = i;
-        }
-      }
-      if(dir_last > 0) {
-        for(int i = 0; i < dir_last; i++) {
-          append_string(path, file[i]);
-        }
-        append_string(path, '/');
-      }
-      for(int i = 1; i < header->text->size - 1; i++) {
-        append_string(path, header->text->head[i]);
-      }
-    }
-
-    FILE *fp = fopen(path->head, "r");
-    if(fp == NULL) {
-      path = allocate_string();
-      for(int i = 0; i < 13; i++) {
-        append_string(path, "/usr/include/"[i]);
-      }
-      for(int i = 1; i < header->text->size - 1; i++) {
-        append_string(path, header->text->head[i]);
-      }
-    } else {
-      fclose(fp);
-    }
+  struct pp_token *header;
+  if(peek_pp_token(pp)->type == PP_H_NAME) {
+    header = read_pp_token(pp);
   } else {
     error("macro-replaced include directive is not implemented yet.\n");
   }
+  discard_new_line(pp);
 
-  printf("#include \"%s\"\n", path->head);
-
-  struct pp_token *next = pop_pp_token(pp);
-  if(next->type != PP_NEW_LINE) {
-    error("invalid include directive.\n");
+  struct string *path;
+  if(header->type == PP_H_NAME && header->text->head[0] == '<') {
+    path = search_header_file(header->text);
+  } else if(header->type == PP_H_NAME && header->text->head[0] == '"') {
+    path = search_named_source_file(header->text, pp->lexer->src->file);
   }
 
-  struct preprocessor *new_pp = allocate_preprocessor(path->head);
-  for(int i = 0; i < MACRO_TABLE_SIZE; i++) {
-    new_pp->macro_table[i] = pp->macro_table[i];
+  if(path == NULL) {
+    error("failed to search include file\n");
   }
 
-  struct pp_list *list = preprocessing_file(new_pp);
+  struct pp_list *list = parse_preprocessing_file(path->head);
   concat_pp_list(pp->list, list);
+}
 
-  for(int i = 0; i < MACRO_TABLE_SIZE; i++) {
-    pp->macro_table[i] = new_pp->macro_table[i];
+// define, undef directive
+int check_parameter(struct macro_entry *macro, struct pp_token *token) {
+  int parameter_size = macro->parameter_size;
+  if(macro->parameter_ellipsis) parameter_size++;
+
+  if(token->type == PP_IDENT) {
+    for(int i = 0; i < parameter_size; i++) {
+      if(strcmp(token->text->head, macro->parameters[i]->head) == 0) {
+        return 1;
+      }
+    }
   }
+
+  return 0;
+}
+
+int check_stringify_operator(struct macro_entry *macro) {
+  struct pp_list *list = macro->replacement_list;
+
+  for(struct pp_node *node = list->head; node != NULL; node = node->next) {
+    if(node->token->type == PP_SHARP) {
+      struct pp_node *target = node->next;
+
+      if(target == NULL) return 0;
+      if(target->token->type == PP_SPACE) target = target->next;
+      if(!check_parameter(macro, target->token)) return 0;
+
+      node = target;
+    }
+  }
+
+  return 1;
+}
+
+int check_concat_operator(struct macro_entry *macro) {
+  struct pp_list *list = macro->replacement_list;
+
+  for(struct pp_node *node = list->head; node != NULL; node = node->next) {
+    if(node->token->type == PP_CONCAT) {
+      if(node == list->head) return 0;
+      if(node->next == NULL) return 0;
+    }
+  }
+
+  return 1;
 }
 
 void define_directive(struct preprocessor *pp) {
-  struct pp_token *ident = pop_pp_token(pp);
-  if(ident->type != PP_IDENT) {
-    error("invalid preprocessing macro name.\n");
-  }
-
   struct macro_entry *macro = allocate_macro_entry();
-  macro->identifier = ident->text->head;
 
-  if(peek_pp_token(pp)->type == PP_SPACE || peek_pp_token(pp)->type == PP_NEW_LINE) {
+  macro->identifier = expect_pp_token(pp, PP_IDENT)->text->head;
+
+  if(check_pp_token(pp, PP_SPACE) || check_pp_token(pp, PP_NEW_LINE)) {
     macro->type = MACRO_OBJECT;
-    if(peek_pp_token(pp)->type == PP_SPACE) {
-      pop_pp_token(pp);
-    }
-  } else if(peek_pp_token(pp)->type == PP_LPAREN) {
+    remove_white_space(pp);
+  } else if(check_pp_token(pp, PP_LPAREN)) {
     macro->type = MACRO_FUNCTION;
     macro->parameter_size = 0;
-    pop_pp_token_with_space(pp);
 
-    // parse macro parameters
-    if(macro->type == MACRO_FUNCTION) {
-      if(peek_pp_token(pp)->type == PP_RPAREN) {
-        macro->parameter_ellipsis = 0;
-        pop_pp_token_with_space(pp);
-      } else {
-        while(1) {
-          struct pp_token *token = pop_pp_token_with_space(pp);
-          if(token->type == PP_IDENT) {
-            macro->parameters[macro->parameter_size++] = token->text;
-            if(peek_pp_token(pp)->type == PP_RPAREN) {
-              macro->parameter_ellipsis = 0;
-              pop_pp_token_with_space(pp);
-              break;
-            } else if(peek_pp_token(pp)->type == PP_COMMA) {
-              pop_pp_token_with_space(pp);
-            } else {
-              error("invalid preprocessing function-like macro definition.\n");
-            }
-          } else if(token->type == PP_ELLIPSIS) {
-            if(peek_pp_token(pp)->type == PP_RPAREN) {
-              macro->parameter_ellipsis = 1;
-              pop_pp_token_with_space(pp);
-              break;
-            } else {
-              error("invalid preprocessing function-like macro definition.\n");
-            }
+    skip_pp_token_with_space(pp);
+
+    if(check_pp_token(pp, PP_RPAREN)) {
+      macro->parameter_ellipsis = 0;
+      skip_pp_token_with_space(pp);
+    } else {
+      while(1) {
+        if(check_pp_token(pp, PP_IDENT)) {
+          if(macro->parameter_size == MACRO_PARAMS_LIMIT) {
+            error("too many macro parameters.\n");
+          }
+
+          struct pp_token *token = read_pp_token_with_space(pp);
+          macro->parameters[macro->parameter_size++] = token->text;
+
+          if(check_pp_token(pp, PP_COMMA)) {
+            skip_pp_token_with_space(pp);
+          } else if(check_pp_token(pp, PP_RPAREN)) {
+            macro->parameter_ellipsis = 0;
+            skip_pp_token_with_space(pp);
+            break;
           } else {
-            error("invalid preprocessing function-like macro definition.\n");
+            unexpected_pp_token(pp);
+          }
+        } else if(check_pp_token(pp, PP_ELLIPSIS)) {
+          skip_pp_token_with_space(pp);
+
+          struct string *va_args = allocate_string();
+          write_string(va_args, "__VA_ARGS__");
+          macro->parameters[macro->parameter_size] = va_args;
+          macro->parameter_ellipsis = 1;
+
+          if(check_pp_token(pp, PP_RPAREN)) {
+            skip_pp_token_with_space(pp);
+            break;
+          } else {
+            unexpected_pp_token(pp);
           }
         }
+        else {
+          unexpected_pp_token(pp);
+        }
       }
-      if(macro->parameter_size > MACRO_PARAMS_LIMIT) {
-        error("too many macro parameters.\n");
-      }
-    }
-    if(macro->parameter_ellipsis) {
-      struct string *va_args = allocate_string();
-      for(int i = 0; i < 11; i++) {
-        append_string(va_args, "__VA_ARGS__"[i]);
-      }
-      macro->parameters[macro->parameter_size] = va_args;
     }
   } else {
-    error("invalid preprocessing macro definition.\n");
+    unexpected_pp_token(pp);
   }
 
-  // parse macro replacement list
-  while(1) {
-    struct pp_token *token = pop_pp_token(pp);
-    if(token->type == PP_NEW_LINE) break;
+  while(!check_pp_token(pp, PP_NEW_LINE)) {
+    struct pp_token *token = read_pp_token(pp);
     append_pp_list(macro->replacement_list, token);
   }
 
-  // check # operator
-  if(macro->type == MACRO_FUNCTION) {
-    for(struct pp_node *node = macro->replacement_list->head; node != NULL; node = node->next) {
-      if(node->token->type == PP_SHARP) {
-        int parameter = 0;
-        if(node->next != NULL) {
-          if(node->next->token->type == PP_SPACE) {
-            node = node->next;
-          }
-          if(node->next != NULL ) {
-            for(int i = 0; i < macro->parameter_size; i++) {
-              if(strcmp(node->next->token->text->head, macro->parameters[i]->head) == 0) {
-                parameter = 1;
-                break;
-              }
-            }
-          }
-        }
-        if(!parameter) {
-          error("invalid # operator.\n");
-        }
-      }
-    }
+  discard_new_line(pp);
+
+  if(macro->type == MACRO_FUNCTION && !check_stringify_operator(macro)) {
+    error("invalid # operator.\n");
+  }
+  if(!check_concat_operator(macro)) {
+    error("invalid ## operator.\n");
   }
 
-  // check ## operator
-  for(struct pp_node *node = macro->replacement_list->head; node != NULL; node = node->next) {
-    if(node->token->type == PP_CONCAT) {
-      if(node == macro->replacement_list->head || node->next == NULL) {
-        error("invalid ## operator.\n");
-      }
-    }
-  }
-
-  insert_macro_table(pp, macro);
+  insert_macro_table(macro);
 }
 
 void undef_directive(struct preprocessor *pp) {
-  struct pp_token *ident = pop_pp_token(pp);
-  if(ident->type != PP_IDENT) {
-    error("invalid preprocessing undef directive.\n");
-  }
-  if(pop_pp_token(pp)->type != PP_NEW_LINE) {
-    error("invalid preprocessing undef directive.\n");
-  }
-
-  delete_macro_table(pp, ident->text->head);
+  struct pp_token *ident = expect_pp_token(pp, PP_IDENT);
+  discard_new_line(pp);
+  delete_macro_table(ident->text->head);
 }
 
-void text_line(struct preprocessor *pp) {
+// text line
+void parse_text_line(struct preprocessor *pp) {
   struct pp_list *text = allocate_pp_list();
 
   while(1) {
-    struct pp_token *token = pop_pp_token(pp);
+    struct pp_token *token = read_pp_token(pp);
     append_pp_list(text, token);
     if(token->type == PP_NEW_LINE) {
       struct pp_token *next = peek_pp_token(pp);
@@ -1248,61 +1180,130 @@ void text_line(struct preprocessor *pp) {
   concat_pp_list(pp->list, replaced);
 }
 
-int group(struct preprocessor *pp) {
-  while(peek_pp_token(pp)->type != PP_NONE) {
-    if(peek_pp_token(pp)->type == PP_SHARP) {
-      pop_pp_token_with_space(pp);
-
-      struct pp_token *directive = peek_pp_token(pp);
-      if(directive->type == PP_IDENT && strcmp(directive->text->head, "elif") == 0) {
-        return 1;
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "else") == 0) {
-        return 1;
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "endif") == 0) {
-        return 1;
-      }
-
-      pop_pp_token_with_space(pp);
-
-      if(directive->type == PP_IDENT && strcmp(directive->text->head, "if") == 0) {
-        if_directive(pp);
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "ifdef") == 0) {
-        ifdef_directive(pp);
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "ifndef") == 0) {
-        ifndef_directive(pp);
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "include") == 0) {
-        include_directive(pp);
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "define") == 0) {
-        define_directive(pp);
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "undef") == 0) {
-        undef_directive(pp);
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "line") == 0) {
-        // #line directive
-        skip_line(pp);
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "error") == 0) {
-        // #error directive
-        skip_line(pp);
-        printf("#error\n");
-        exit(1);
-      } else if(directive->type == PP_IDENT && strcmp(directive->text->head, "pragma") == 0) {
-        // #pragma directive
-        skip_line(pp);
-      } else if(directive->type == PP_NEW_LINE) {
-        // #null directive
-        skip_line(pp);
-      } else {
-        fprintf(stderr, "invalid preprocessor directive \"%s\".\n", directive->text->head);
-        skip_line(pp);
-      }
-    } else {
-      text_line(pp);
-    }
-  }
-
+// group
+int check_if_section(struct preprocessor *pp) {
+  if(check_keyword(pp, "if")) return 1;
+  if(check_keyword(pp, "ifdef")) return 1;
+  if(check_keyword(pp, "ifndef")) return 1;
   return 0;
 }
 
-struct pp_list *preprocessing_file(struct preprocessor *pp) {
-  group(pp);
-  return pp->list;
+int check_group_end(struct preprocessor *pp) {
+  if(check_keyword(pp, "elif")) return 1;
+  if(check_keyword(pp, "else")) return 1;
+  if(check_keyword(pp, "endif")) return 1;
+  return 0;
+}
+
+void group(struct preprocessor *pp) {
+  while(!check_pp_token(pp, PP_NONE)) {
+    if(check_pp_token(pp, PP_SHARP)) {
+      skip_pp_token_with_space(pp);
+
+      if(check_if_section(pp)) {
+        if_section(pp);
+      } else if(check_group_end(pp)) {
+        break;
+      } else if(check_keyword(pp, "include")) {
+        skip_pp_token_with_space(pp);
+        include_directive(pp);
+      } else if(check_keyword(pp, "define")) {
+        skip_pp_token_with_space(pp);
+        define_directive(pp);
+      } else if(check_keyword(pp, "undef")) {
+        skip_pp_token_with_space(pp);
+        undef_directive(pp);
+      } else if(check_keyword(pp, "line")) {
+        warning("#line directive is not implemented yet.\n");
+        skip_line(pp);
+      } else if(check_keyword(pp, "error")) {
+        warning("#error directive is not implemented yet.\n");
+        skip_line(pp);
+      } else if(check_keyword(pp, "pragma")) {
+        warning("#pragma directive is not implemented yet.\n");
+        skip_line(pp);
+      } else if(check_pp_token(pp, PP_SPACE)) {
+        skip_line(pp);
+      } else {
+        struct pp_token *directive = read_pp_token(pp);
+        error("unknown directive: \"#%s\".\n", directive->text->head);
+      }
+    } else {
+      parse_text_line(pp);
+    }
+  }
+}
+
+void skip_line(struct preprocessor *pp) {
+  while(1) {
+    struct pp_token *token = read_pp_token(pp);
+    if(token->type == PP_NEW_LINE) break;
+  }
+}
+
+void skip_group(struct preprocessor *pp) {
+  while(peek_pp_token(pp)->type != PP_NONE) {
+    if(peek_pp_token(pp)->type == PP_SHARP) {
+      read_pp_token_with_space(pp);
+
+      if(check_if_section(pp)) {
+        skip_line(pp);
+        skip_group(pp);
+        while(check_keyword(pp, "elif")) {
+          skip_line(pp);
+          skip_group(pp);
+        }
+        if(check_keyword(pp, "else")) {
+          skip_line(pp);
+          skip_group(pp);
+        }
+        if(check_keyword(pp, "endif")) {
+          skip_line(pp);
+        }
+      } else if(check_group_end(pp)) {
+        break;
+      } else {
+        skip_line(pp);
+      }
+    } else {
+      skip_line(pp);
+    }
+  }
+}
+
+struct pp_list *parse_preprocessing_file(unsigned char *file) {
+  struct preprocessor pp;
+  pp.lexer = allocate_pp_token_lexer(file);
+  pp.token_queue_size = 0;
+  pp.list = allocate_pp_list();
+
+  group(&pp);
+
+  if(!check_pp_token(&pp, PP_NONE)) {
+    if(check_keyword(&pp, "elif")) {
+      error("invalid #elif directive appeared.\n");
+    } else if(check_keyword(&pp, "else")) {
+      error("invalid #else directive appeared.\n");
+    } else if(check_keyword(&pp, "endif")) {
+      error("invalid #endif directive appeared.\n");
+    }
+  }
+
+  return pp.list;
+}
+
+struct pp_list *preprocess(unsigned char *file) {
+  struct macro_entry *arch = allocate_macro_entry();
+  arch->identifier = "__x86_64__";
+  insert_macro_table(arch);
+
+  struct pp_list *list = parse_preprocessing_file(file);
+
+  for(int i = 0; i < MACRO_TABLE_SIZE; i++) {
+    if(macro_table[i] != NULL) {
+      free_macro_entry(macro_table[i]);
+    }
+  }
+
+  return list;
 }
